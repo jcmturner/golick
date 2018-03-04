@@ -16,19 +16,19 @@ import (
 )
 
 type Licence struct {
-	UUID       string
-	ValidFrom  time.Time
-	ValidUntil time.Time
-	RunPeriod  time.Duration
-	Count      int64 // Zero = unlimited
-	Signature  []byte
+	UUID        string
+	ValidFrom   time.Time
+	ValidUntil  time.Time
+	RunDuration time.Duration
+	MaxCount    int64 // Zero = unlimited
+	signature   []byte
 }
 
 func New(key *rsa.PrivateKey, from, until time.Time, count int64) (*Licence, error) {
 	l := Licence{
 		ValidFrom:  from,
 		ValidUntil: until,
-		Count:      count,
+		MaxCount:   count,
 	}
 	u, err := uuid.GenerateUUID()
 	if err != nil {
@@ -41,8 +41,8 @@ func New(key *rsa.PrivateKey, from, until time.Time, count int64) (*Licence, err
 
 func NewRunPeriod(key *rsa.PrivateKey, duration time.Duration, count int64) (*Licence, error) {
 	l := Licence{
-		RunPeriod: duration,
-		Count:     count,
+		RunDuration: duration,
+		MaxCount:    count,
 	}
 	u, err := uuid.GenerateUUID()
 	if err != nil {
@@ -79,19 +79,19 @@ func (l *Licence) String() (string, error) {
 }
 
 func (l *Licence) Print() string {
-	if l.RunPeriod != 0 {
+	if l.RunDuration != 0 {
 		return fmt.Sprintf(`Licence Information:
 UUID: %s
 Runtime Duration: %v
 Valid From: %v
 Valid Until: %v
-Limit: %d`, l.UUID, l.RunPeriod, l.ValidFrom, l.ValidUntil, l.Count)
+Limit: %d`, l.UUID, l.RunDuration, l.ValidFrom, l.ValidUntil, l.MaxCount)
 	}
 	return fmt.Sprintf(`Licence Information:
 UUID: %s
 Valid From: %v
 Valid Until: %v
-Limit: %d`, l.UUID, l.ValidFrom, l.ValidUntil, l.Count)
+Limit: %d`, l.UUID, l.ValidFrom, l.ValidUntil, l.MaxCount)
 }
 
 func (l *Licence) Valid(pubkey *rsa.PublicKey) (bool, error) {
@@ -99,17 +99,17 @@ func (l *Licence) Valid(pubkey *rsa.PublicKey) (bool, error) {
 	if err != nil {
 		return false, err
 	}
-	err = rsa.VerifyPKCS1v15(pubkey, crypto.SHA256, h[:], l.Signature)
+	err = rsa.VerifyPKCS1v15(pubkey, crypto.SHA256, h[:], l.signature)
 	if err != nil {
 		return false, err
 	}
-	if l.RunPeriod == 0 {
+	if l.RunDuration == 0 {
 		if time.Now().UTC().After(l.ValidUntil) || time.Now().UTC().Before(l.ValidFrom) {
 			return false, errors.New("outside of licence valid times")
 		}
 	} else {
 		l.ValidFrom = time.Now().UTC()
-		l.ValidUntil = time.Now().UTC().Add(l.RunPeriod)
+		l.ValidUntil = time.Now().UTC().Add(l.RunDuration)
 	}
 	return true, nil
 }
@@ -120,7 +120,7 @@ func (l *Licence) Sign(key *rsa.PrivateKey) error {
 		return err
 	}
 	rnd := rand.Reader
-	l.Signature, err = rsa.SignPKCS1v15(rnd, key, crypto.SHA256, h[:])
+	l.signature, err = rsa.SignPKCS1v15(rnd, key, crypto.SHA256, h[:])
 	if err != nil {
 		return err
 	}
@@ -129,12 +129,12 @@ func (l *Licence) Sign(key *rsa.PrivateKey) error {
 
 func (l *Licence) hash() ([32]byte, error) {
 	nl := Licence{
-		UUID:       l.UUID,
-		ValidFrom:  l.ValidFrom,
-		ValidUntil: l.ValidUntil,
-		RunPeriod:  l.RunPeriod,
-		Count:      l.Count,
-		Signature:  []byte{},
+		UUID:        l.UUID,
+		ValidFrom:   l.ValidFrom,
+		ValidUntil:  l.ValidUntil,
+		RunDuration: l.RunDuration,
+		MaxCount:    l.MaxCount,
+		signature:   []byte{},
 	}
 	buf := new(bytes.Buffer)
 	enc := gob.NewEncoder(buf)
